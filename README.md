@@ -1,4 +1,4 @@
-# GeoWatcher.ps1
+# GeoLocator.ps1
 The purpose of this powershell script is to track down a Windows machine's geolocation using the GeoLocator Class. For detailed information on the full specifics regarding this class, please refer to the Microsoft Documentation [here](https://learn.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geolocator?view=winrt-26100).
 
 In short, the Geolocator class is a Windows-Specific API used to retrieve the geographic location of a device through a couple of different methods, such as:
@@ -12,9 +12,9 @@ In short, the Geolocator class is a Windows-Specific API used to retrieve the ge
 - IP Address
   - A fallback if none of the other methods are available. IP geocoordinates can pinpoint the city, but they are not always accurate, depending on the database. They can also easily be spoofed or thrown off by a VPN.
 
-This powerhsell script essentially asks the Windows GeoLocator service, _"Tell me the best location data you have right now."_ The service then provides the most recent and reliable coordinate fix that the machine was able to acquire using any of the listed methods.
+This powerhsell script essentially asks the Windows GeoLocator service, _"Tell me the best location data you have right now."_ The service then provides the most recent and reliable coordinate fix that the machine was able to acquire using any of the listed methods. While GPS and Cell Tower Triangulation are possible ad included as methods, this has only been tested with Wi-Fi Triangulation and the IP address fallback.
 
-It then runs those coordinates through [Nominatim OpenStreetMap](https://nominatim.openstreetmap.org) to retrieve an approximate address, providing an output with the Timestamp, Latitude, Longitude, a Google Maps link to the location, and a possible address.
+Once a set of coordinates are acquired, it then runs them through [Nominatim OpenStreetMap](https://nominatim.openstreetmap.org) to retrieve an approximate address, providing an output with the Timestamp, Latitude, Longitude, a Google Maps link to the location, and a possible address.
 
 As for accuracy, when testing this method on devices with known locations in urban areas and Wi-Fi enabled, I found that the coordinates were consistently within a few hundred meters. If a machine only had one Wi-Fi access point available (or no Wi-Fi at all), the accuracy would be questionable, as it may have to use the IP's geocoordinates as a reference.
 
@@ -46,31 +46,20 @@ Now I can't guarantee that your endeavors with this will be as interesting, but 
 
 # How to use this script
 
-The script requires Location permissions to be enabled on the machine for this to work.
+The script requires Location permissions to be enabled on the machine for this to work. While not techically required, I highly recommend ensuring Wi-Fi is enabled as well, as without it, the geocoordinates will be based solely on the IP address (unless the device actually has GPS or Cellular capabilities). I included instructions in the troubleshooting notes for the Wi-Fi if you face issues. The Wi-Fi does NOT need to be connected, only enabled.
 
-I highly recommend ensuring Wi-Fi is enabled as well, as without it, the geocoordinates will be based solely on the IP address (unless the device actually has GPS or Cellular capabilities). I included instructions in the troubleshooting notes for the Wi-Fi if you face issues.
-
-To check location permissions, you can run this PowerShell command:
-```powershell
-Get-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors" -Name "DisableLocation"
-```
-Value 0 means that your location is enabled. If it is disabled, run:
-```powershell
-Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors" -Name "DisableLocation" -Value 0
-```
-This is the equivalent of going into Settings > Privacy & security > Location and enabling Location Services. You should now be able to copy the script to your machine and run via Powershell.
 
 It's worth mentioning that I included two versions of the script to choose from. There is no difference in their functionality, just their format.
 
-GeoWatcher.ps1 is the standard powershell script that you can import into your RMM tool and run, or drop on the device and execute remotely.
+GeoLocater.ps1 is the standard powershell script that you can import into your RMM tool and run, or drop on the device and execute remotely.
 
-GeoWatcherOneLine.ps1 is the same script, but formatted as a single line, allowing you to copy and paste it directly into a terminal. When using PowerShell through Cortex XDR Live Terminal, it didn't seem to like scripts, so this was the easiest way for me to get around that issue.
+GeoLocatorOneLine.ps1 is the same script, but formatted as a single line, allowing you to copy and paste it directly into a terminal. When using PowerShell through Cortex XDR Live Terminal, it didn't seem to like scripts, so this was the easiest way for me to get around that issue.
 
 # Troubleshooting
 
-The main purpose of these troubleshooting notes is for when you are trying to run this script on a machine where you do not have physical access to it and can only access the machine via a remote PowerShell terminal.
+The main purpose of these troubleshooting notes is for when you are trying to run this script on a machine where you do not have physical access to it and can only access the machine via a remote PowerShell terminal. The diagnostics from the main script should tell you exactly what is needed, but I have detailed below how to check and enable each setting manually.
 
-If you have access to the desktop, this can all be summarized to ensure your Wi-Fi is on, that location settings are enabled (Settings > Privacy & security > Location), and that Airplane Mode is not enabled.
+If you have physical access to the desktop, this can all be summarized to ensure your Wi-Fi is on, that location settings are enabled (Settings > Privacy & security > Location), and that Airplane Mode is not enabled.
 
 **Location Permissions**
 
@@ -82,7 +71,7 @@ Value 0 means location is enabled. If disabled, run:
 ```powershell
 Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors" -Name "DisableLocation" -Value 0
 ```
-If you still receive location permission errors, you may need to check the AppPrivacyKey:
+If you still receive location permission errors, you may need to check the AppPrivacyKey. This may be required dependent on the OS version:
 ```powershell
 Get-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy" -Name "LetAppsAccessLocation"
 ```
