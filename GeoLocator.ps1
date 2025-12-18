@@ -1,14 +1,18 @@
 # -----------------------------------------------------------------------------
-# SCRIPT: GeoWatcherandDiag.ps1
-# DESCRIPTION: Combines diagnostic checks with geolocation retrieval.
-#              First validates that location is enabled, checks Wi-Fi and 
+# SCRIPT: GeoLocator.ps1
+# DESCRIPTION: First validates that location is enabled, checks Wi-Fi and 
 #              Airplane Mode status, then retrieves geolocation and reverse
 #              geocodes the coordinates into a human-readable address.
 # REQUIREMENTS: Windows Location Services must be enabled and permission granted.
 # -----------------------------------------------------------------------------
 
 # 1. Diagnostic Checks - Verify prerequisites
-Write-Host "Running diagnostic checks..."
+
+Write-Host ""
+Write-Host "===============================" -ForegroundColor Cyan
+Write-Host "           Diagnostics         " -ForegroundColor Cyan
+Write-Host "===============================" -ForegroundColor Cyan
+Write-Host ""
 
 # Check Location Enable/Disable status
 $locPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors'
@@ -17,12 +21,8 @@ if (Test-Path $locPath) {
     $locProps = Get-ItemProperty -Path $locPath -ErrorAction SilentlyContinue
     if ($null -ne $locProps -and $locProps.PSObject.Properties.Name -contains 'DisableLocation') {
         $disable = [int]$locProps.DisableLocation
-        if ($disable -eq 0) {
-            Write-Host "Location services: Enabled"
-        }
-        else {
-            Write-Error "Location services: Disabled (DisableLocation=$disable)"
-            exit 1
+        if ($disable -ne 0) {
+            $locationEnabled = $false
         }
     }
 }
@@ -31,15 +31,6 @@ if (Test-Path $locPath) {
 $appPrivPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy'
 if (Test-Path $appPrivPath) {
     $appProps = Get-ItemProperty -Path $appPrivPath -ErrorAction SilentlyContinue
-    if ($null -ne $appProps -and $appProps.PSObject.Properties.Name -contains 'LetAppsAccessLocation') {
-        $val = [int]$appProps.LetAppsAccessLocation
-        if ($val -eq 1) {
-            Write-Host "LetAppsAccessLocation: Enabled"
-        }
-        else {
-            Write-Warning "LetAppsAccessLocation is set to $val. Apps may be blocked from accessing location."
-        }
-    }
 }
 
 # Check Wi-Fi status
@@ -68,11 +59,20 @@ if (-not $wifiEnabled) {
     }
 }
 
+$ssidCount = 0
 if ($wifiEnabled) {
-    Write-Host "Wi-Fi: Enabled/Available"
-}
-else {
-    Write-Host "Wi-Fi: Not available or disabled"
+        $wifiStatus = 'Enabled/Available'
+        $wifiColor = 'Green'
+    try {
+        $netshNetworks = netsh wlan show networks 2>$null
+        if ($netshNetworks) {
+            $ssidCount = ($netshNetworks | Select-String -Pattern '^SSID\s+\d+\s+:' | Measure-Object).Count
+        }
+    }
+    catch { $ssidCount = 0 }
+} else {
+    $wifiStatus = 'Not available or disabled'
+    $wifiColor = 'Red'
 }
 
 # Check Airplane Mode status
@@ -96,19 +96,74 @@ if (Test-Path $radioReg) {
     }
 }
 
-if ($airplaneOn) {
-    Write-Host "Airplane Mode: Enabled"
-}
-else {
-    Write-Host "Airplane Mode: Disabled"
-}
+
+
+$airplaneStatus = if ($airplaneOn) { 'Enabled' } else { 'Disabled' }
+$airplaneColor = if ($airplaneOn) { 'Red' } else { 'Green' }
+
+Write-Host ""
+$locationStatus = if ($locationEnabled) { 'Enabled' } else { 'Disabled' }
+$locationColor = if ($locationEnabled) { 'Green' } else { 'Red' }
+Write-Host ("{0,-22}: {1}" -f 'Location Services', $locationStatus) -ForegroundColor $locationColor
+Write-Host ("{0,-22}: {1}" -f 'Wi-Fi', $wifiStatus) -ForegroundColor $wifiColor
+Write-Host ("{0,-22}: {1}" -f 'Visible Network Count', $ssidCount) -ForegroundColor Green
+Write-Host ("{0,-22}: {1}" -f 'Airplane Mode', $airplaneStatus) -ForegroundColor $airplaneColor
+Write-Host ""
 
 # Warn if Wi-Fi is disabled or Airplane Mode is enabled
 if (-not $wifiEnabled -or $airplaneOn) {
-    Write-Warning "Unable to perform Wi-Fi triangulation. GeoLocation will be based off of IP address. Accuracy may vary."
+    Write-Host "Unable to perform Wi-Fi triangulation. GeoLocation will be based off of IP address. Accuracy may vary." -ForegroundColor Yellow
 }
 
-Write-Host "Diagnostic checks complete.`n"
+# If location services are disabled, do not attempt to launch GeoLocator
+if (-not $locationEnabled) {
+    Write-Host "Unable to launch GeoLocator due to location permissions. Please verify that location permissions and services are enabled before trying again." -ForegroundColor Red
+
+    # Location Permissions Section Header
+    Write-Host ""
+    Write-Host "===============================" -ForegroundColor Cyan
+    Write-Host "      Location Permissions     " -ForegroundColor Cyan
+    Write-Host "===============================" -ForegroundColor Cyan
+    Write-Host ""
+
+    $locPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors'
+    if (Test-Path $locPath) {
+        Write-Host "Registry key exists: $locPath" -ForegroundColor Green
+        $locProps = Get-ItemProperty -Path $locPath -ErrorAction SilentlyContinue
+        if ($null -ne $locProps -and $locProps.PSObject.Properties.Name -contains 'DisableLocation') {
+            $disable = [int]$locProps.DisableLocation
+            if ($disable -eq 0) {
+                Write-Host "DisableLocation: 0 (Location services enabled)" -ForegroundColor Green
+            } else {
+                Write-Host "DisableLocation: 1 (Location services disabled)" -ForegroundColor Red
+            }
+        } else {
+            Write-Host "DisableLocation value is missing (default: enabled)" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Registry key missing: $locPath (default: enabled)" -ForegroundColor Red
+    }
+
+    $appPrivPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy'
+    if (Test-Path $appPrivPath) {
+        Write-Host "Registry key exists: $appPrivPath" -ForegroundColor Green
+        $appProps = Get-ItemProperty -Path $appPrivPath -ErrorAction SilentlyContinue
+        if ($null -ne $appProps -and $appProps.PSObject.Properties.Name -contains 'LetAppsAccessLocation') {
+            $val = [int]$appProps.LetAppsAccessLocation
+            if ($val -eq 1) {
+                Write-Host "LetAppsAccessLocation: 1 (Enabled)" -ForegroundColor Green
+            } else {
+                Write-Host "LetAppsAccessLocation: $val (Disabled)" -ForegroundColor Red
+            }
+        } else {
+            Write-Host "LetAppsAccessLocation value is missing" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Registry key missing: $appPrivPath" -ForegroundColor Red
+    }
+
+    return
+}
 
 # 2. Load the necessary .NET Assembly for Geolocation services
 try {
@@ -124,21 +179,25 @@ $GeoLocator = New-Object System.Device.Location.GeoCoordinateWatcher
 $TimeoutSeconds = 5 # Set a maximum wait time
 $StartTime = Get-Date
 
-Write-Host "Starting location locator. Waiting up to $TimeoutSeconds seconds for coordinates..."
+Write-Host "Starting GeoLocator. Waiting up to $TimeoutSeconds seconds for coordinates..."
 
 # Start the locator
 $GeoLocator.Start()
 
 # 4. Wait for the locator to become ready, checking status and permissions
 $IsReady = $false
+$permissionDenied = $false
 while ((Get-Date) -le ($StartTime).AddSeconds($TimeoutSeconds)) {
     if ($GeoLocator.Status -eq 'Ready') {
         $IsReady = $true
         break
     }
     if ($GeoLocator.Permission -eq 'Denied') {
-        Write-Error 'Location access permission was explicitly denied by the system or user.'
-        exit 1
+        # Do not exit here. Record that permission was denied so we can
+        # finish diagnostics and exit gracefully later.
+        $permissionDenied = $true
+        Write-Host "Location services: Disabled"
+        break
     }
     Start-Sleep -Milliseconds 250
 }
@@ -153,17 +212,18 @@ $statusMap = @{
 }
 
 # 5. Process the Location Data and Resolve Address
-if (-not $IsReady) {
+if ($permissionDenied) {
+    # Permission was denied by the system/user. Stop locator and inform the user.
+    try { $GeoLocator.Stop() } catch { }
+    Write-Host "Unable to start GeoLocator. Please check Location Services Permissions and try again."
+}
+elseif (-not $IsReady) {
     $currentStatus = $GeoLocator.Status
     $errorMessage = $statusMap[$currentStatus]
     if (-not $errorMessage) {
         $errorMessage = "Timed out waiting for GPS coordinates. Status: $currentStatus"
     }
     Write-Warning $errorMessage
-}
-elseif ($GeoLocator.Permission -eq 'Denied') {
-    # Handled above, but a final check for clarity
-    Write-Error 'Location access permission was denied.'
 }
 else {
     $location = $GeoLocator.Position.Location
@@ -174,7 +234,14 @@ else {
         # Use ISO 8601 format for robust timestamps
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
-        Write-Host "Coordinates found: Lat $latitude, Lon $longitude"
+        Write-Host ""
+        Write-Host "===============================" -ForegroundColor Cyan
+        Write-Host "      GeoLocator Results    " -ForegroundColor Cyan
+        Write-Host "===============================" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host ("{0,-22}: {1}" -f 'Latitude', $latitude) -ForegroundColor Magenta
+        Write-Host ("{0,-22}: {1}" -f 'Longitude', $longitude) -ForegroundColor Magenta
+        Write-Host ("{0,-22}: {1}" -f 'Timestamp', $timestamp) -ForegroundColor Magenta
 
         # 6. Reverse Geocode Coordinates using OpenStreetMap Nominatim
         try {
@@ -190,25 +257,16 @@ else {
             $locationName = $locationData.display_name
             $googleMapsUrl = "https://www.google.com/maps?q=$latitude,$longitude"
 
-            # 7. Output the final data as a structured object
-            [PSCustomObject]@{
-                Timestamp       = $timestamp
-                Latitude        = $latitude
-                Longitude       = $longitude
-                GoogleMapsLink  = $googleMapsUrl
-                ResolvedAddress = $locationName
-            } | Write-Output
+            Write-Host ("{0,-22}: {1}" -f 'Resolved Address', $locationName) -ForegroundColor Cyan
+            Write-Host ("{0,-22}: {1}" -f 'Google Maps Link', $googleMapsUrl) -ForegroundColor Cyan
+
+            # Only output formatted results above; do not emit PSCustomObject
         }
         catch {
             Write-Warning "Could not resolve address via Nominatim API. Error: $($_.Exception.Message)"
-            # Fallback output with available data
-            [PSCustomObject]@{
-                Timestamp       = $timestamp
-                Latitude        = $latitude
-                Longitude       = $longitude
-                GoogleMapsLink  = "https://www.google.com/maps?q=$latitude,$longitude"
-                ResolvedAddress = "Address resolution failed (API error)."
-            } | Write-Output
+            Write-Host ("{0,-22}: {1}" -f 'Resolved Address', 'Address resolution failed (API error).') -ForegroundColor Red
+            Write-Host ("{0,-22}: {1}" -f 'Google Maps Link', "https://www.google.com/maps?q=$latitude,$longitude") -ForegroundColor Cyan
+            # Only output formatted results above; do not emit PSCustomObject
         }
     }
     else {
