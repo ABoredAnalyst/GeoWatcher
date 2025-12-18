@@ -1,7 +1,7 @@
-# GeoLocator.ps1
-The purpose of this powershell script is to track down a Windows machine's geolocation using the GeoLocator Class. For detailed information on the full specifics regarding this class, please refer to the Microsoft Documentation [here](https://learn.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geolocator?view=winrt-26100).
+# GeoLocator
+The purpose of this script is to track down a Windows machine's geolocation using the GeoCoordinateWatcher Class. For detailed information on the full specifics regarding this class, please refer to the Microsoft Documentation [here]([https://learn.microsoft.com/en-us/uwp/api/windows.devices.geolocation.geolocator?view=winrt-26100](https://learn.microsoft.com/en-us/dotnet/api/system.device.location.geocoordinatewatcher?view=netframework-4.8.1)).
 
-In short, the Geolocator class is a Windows-Specific API used to retrieve the geographic location of a device through a couple of different methods, such as:
+In short, the GeoCoordinateWatcher class is a Windows-Specific API used to retrieve the geographic location of a device through a couple of different methods, such as:
 
 - Wi-Fi Triangulation
   - Scans surrounding Wi-Fi access points and references their SSIDs and MACs against a location database.
@@ -12,13 +12,13 @@ In short, the Geolocator class is a Windows-Specific API used to retrieve the ge
 - IP Address
   - A fallback if none of the other methods are available. IP geocoordinates can pinpoint the city, but they are not always accurate, depending on the database. They can also easily be spoofed or thrown off by a VPN.
 
-This powerhsell script essentially asks the Windows GeoLocator service, _"Tell me the best location data you have right now."_ The service then provides the most recent and reliable coordinate fix that the machine was able to acquire using any of the listed methods. While GPS and Cell Tower Triangulation are possible ad included as methods, this has only been tested with Wi-Fi Triangulation and the IP address fallback.
+The script essentially asks the Windows GeoLocator service, _"Tell me the best location data you have right now."_ The service then provides the most recent and reliable coordinate fix that the machine was able to acquire using any of the listed methods. While GPS and Cell Tower Triangulation are possible ad included as methods, this has only been tested with Wi-Fi Triangulation and the IP address fallback.
 
 Once a set of coordinates are acquired, it then runs them through [Nominatim OpenStreetMap](https://nominatim.openstreetmap.org) to retrieve an approximate address, providing an output with the Timestamp, Latitude, Longitude, a Google Maps link to the location, and a possible address.
 
-As for accuracy, when testing this method on devices with known locations in urban areas and Wi-Fi enabled, I found that the coordinates were consistently within a few hundred meters. If a machine only had one Wi-Fi access point available (or no Wi-Fi at all), the accuracy would be questionable, as it may have to use the IP's geocoordinates as a reference.
+As for accuracy, when testing this method on devices with known locations in urban areas and Wi-Fi enabled, I found that the coordinates were consistently within a few hundred meters. If a machine only has one Wi-Fi access point available (or no Wi-Fi at all), the accuracy would be questionable, as it may have to use the IP's geocoordinates as a reference.
 
-To guage potential accuracy, I recommend performing a scan of available networks before running this script with the following command:
+To gauge potential accuracy, I recommend performing a scan of available networks before running this script with the following command:
 ```powershell
 netsh wlan networks
 ```
@@ -26,13 +26,14 @@ If you see 3+ separate available networks, you can pretty much guarantee the res
 
 # Who should use this, and why?
 
-Security Analysts and any IT personnel who have a suspicion that one of their remote users may not be exactly where they claim to be (or where their IP says they are…) Many foreign adversaries have began using VPNs to mask their location so that they can infiltrate US Remote jobs. Matter of fact, this year alone, my team has uncovered four individuals who managed to take our company computers out of country for remote work, two of which were located in Pakistan and confirmed to be working on behalf of the DPRK.
+Security Analysts and any IT personnel who have a suspicion that one of their remote users may not be exactly where they claim to be (or where their IP says they are…) Many foreign adversaries have began using VPNs to mask their location so that they can infiltrate US Remote jobs. Matter of fact, this year alone, my team has uncovered five individuals who managed to take our company computers out of country for remote work, two of which were located in Pakistan and confirmed to be working on behalf of the DPRK.
+
 
 Below is a very brief overview of one of my incidents for reference where a user claimed to be in Colorado, but was discovered to actually reside in Brazil.
 
 ## Incident Overview
 
-A member of my IT team reported a suspicious user to me. The user was experiencing massive latency issues, so IT ran a speed test on their machine using Ookla. They found it odd that the user's ISP came back as ProtonVPN. It turns out that the user had a VPN configured on their home router.
+A member of my IT team reported a suspicious user to me. The user was experiencing massive latency issues, so IT ran a speed test on their machine using Ookla. They found it odd that the user's ISP came back as ProtonVPN. It turns out that the user had a VPN configured on a GL.iNet travel router.
 
 Not necessarily a policy violation, but still suspicious.
 
@@ -46,18 +47,19 @@ Now I can't guarantee that your endeavors with this will be as interesting, but 
 
 # How to use this script
 
-The script requires Location permissions to be enabled on the machine for this to work. While not techically required, I highly recommend ensuring Wi-Fi is enabled as well, as without it, the geocoordinates will be based solely on the IP address (unless the device actually has GPS or Cellular capabilities). I included instructions in the troubleshooting notes for the Wi-Fi if you face issues. The Wi-Fi does NOT need to be connected, only enabled.
+The script requires Location permissions to be enabled on the machine for this to work. While not techically required, I HIGHLY recommend ensuring Wi-Fi is enabled as well, as without it, the geocoordinates will be based solely on the IP address (unless the device actually has GPS or Cellular capabilities). I included instructions in the troubleshooting notes for the Wi-Fi if you face issues. The Wi-Fi does NOT need to be connected, only enabled.
 
 
-It's worth mentioning that I included two versions of the script to choose from. There is no difference in their functionality, just their format.
+It's worth mentioning that I included a powershell version and two python versions of the script. They all share the same functionality, except the GeoLocatorCortex one does not colorcode its output.
+The GeoLocatorCortex.py script is meant to be used with Cortex XDR's Script Agent library. Due to their limited module support, it is basically just a python wrapper for the original powershell script.
 
-GeoLocater.ps1 is the standard powershell script that you can import into your RMM tool and run, or drop on the device and execute remotely.
 
-GeoLocatorOneLine.ps1 is the same script, but formatted as a single line, allowing you to copy and paste it directly into a terminal. When using PowerShell through Cortex XDR Live Terminal, it didn't seem to like scripts, so this was the easiest way for me to get around that issue.
 
 # Troubleshooting
 
 The main purpose of these troubleshooting notes is for when you are trying to run this script on a machine where you do not have physical access to it and can only access the machine via a remote PowerShell terminal. The diagnostics from the main script should tell you exactly what is needed, but I have detailed below how to check and enable each setting manually.
+
+The script will include a diagnostics check at the beginning giving you the status of your Location Permissions, Wi-Fi, Visible Networks, and Airplane Mode to assist with troubleshooting.
 
 If you have physical access to the desktop, this can all be summarized to ensure your Wi-Fi is on, that location settings are enabled (Settings > Privacy & security > Location), and that Airplane Mode is not enabled.
 
@@ -91,11 +93,11 @@ Enable-netAdapter -Name "Wi-Fi" (may need to replace interface name if different
 ```
 Check the interface again. If the adapter still shows 'Software Off,' then it is possible that the machine is currently in Airplane Mode. You can check with:
 ```powershell
-_(\[int\](Get-ItemProperty "HKLM:\\System\\CurrentControlSet\\Control\\RadioManagement\\SystemRadioState").'(default)' -eq 1)_
+(\[int\](Get-ItemProperty "HKLM:\\System\\CurrentControlSet\\Control\\RadioManagement\\SystemRadioState").'(default)' -eq 1)
 ```
 If results return true, you can try to disable airplane mode by running:
 ```powershell
-_Set-ItemProperty -Path "HKLM:\\System\\CurrentControlSet\\Control\\RadioManagement\\SystemRadioState" -Name "(default)" -Value 0_
+Set-ItemProperty -Path "HKLM:\\System\\CurrentControlSet\\Control\\RadioManagement\\SystemRadioState" -Name "(default)" -Value 0
 ```
 Then either reboot the machine run this to try and force your network adapters to enable:
 ```powershell
